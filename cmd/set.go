@@ -78,7 +78,7 @@ var setCmd = &cobra.Command{
 			fmt.Println("Profile set to", profile)
 			targetDevice.State.Temperature = t
 			targetDevice.State.Brightness = b
-			utils.WriteConfig("config.yaml", Config)
+			utils.WriteConfig("/home/frank/coding/neewerctl/config.yaml", Config)
 			return
 		}
 
@@ -109,7 +109,7 @@ var setCmd = &cobra.Command{
 
 		targetDevice.State.Temperature = nextTemp
 		targetDevice.State.Brightness = nextBright
-		utils.WriteConfig("config.yaml", Config)
+		utils.WriteConfig("/home/frank/coding/neewerctl/config.yaml", Config)
 		fmt.Println("Set brightness to", nextBright, "and temperature to", nextTemp)
 	},
 }

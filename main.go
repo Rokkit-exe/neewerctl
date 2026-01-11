@@ -8,7 +8,7 @@ import (
 )
 
 func main() {
-	config, err := utils.LoadConfig("config.yaml")
+	config, err := utils.LoadConfig("/home/frank/coding/neewerctl/config.yaml")
 	if err != nil {
 		fmt.Println("Failed to load config:", err)
 		return

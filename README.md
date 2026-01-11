@@ -26,10 +26,7 @@
 git clone https://github.com/Rokkit-exe/neewerctl.git
 cd neewerctl
 
-go build -o neewerctl main.go
-
-# Optionnal: move binary to /usr/local/bin for global usage
-sudo cp neewerctl /usr/local/bin/neewerctl
+sudo ./init.sh
 ```
 
 ## Usage
@@ -38,6 +35,8 @@ sudo cp neewerctl /usr/local/bin/neewerctl
 # must be run as root
 # default port: /dev/ttyUSB0
 
+sudo neewerctl deamon start
+sudo neewerctl deamon stop
 # Adjust brightness (0-100) and temperature (2700-7000K)
 sudo neewerctl set --device "/dev/ttyUSB0" --brightness [0-100] --temperature [2700-7000]
 
@@ -50,9 +49,6 @@ sudo neewerctl set --profile [cold|sunlight|afternoon|sunset|candle] -d "/dev/tt
 
 # List connected Neewer devices
 sudo neewerctl list
-
-# list specific device information
-sudo neewerctl list -d "/dev/ttyUSB0"
 ```
 
 ## Find Device
