@@ -1,0 +1,30 @@
+devices:
+- model: PL81 Pro
+  vendor_id: 1a86
+  product_id: "7523"
+  driver: ch341-uart
+  min_brightness: 0
+  max_brightness: 100
+  min_temperature: 2900
+  max_temperature: 7000
+  state:
+    port: /dev/ttyUSB0
+    power: true
+    brightness: 16
+    temperature: 4500
+profiles:
+- name: cold
+  temperature: 7000
+  brightness: 100
+- name: sunlight
+  temperature: 5600
+  brightness: 28
+- name: afternoon
+  temperature: 5000
+  brightness: 16
+- name: sunset
+  temperature: 4500
+  brightness: 16
+- name: candle
+  temperature: 3400
+  brightness: 28
