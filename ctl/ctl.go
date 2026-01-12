@@ -3,88 +3,27 @@ package ctl
 import (
 	"bytes"
 	"fmt"
-	"io"
 	"net"
 	"os"
 	"os/exec"
-	"path/filepath"
+	"sync"
 	"time"
 
+	"github.com/Rokkit-exe/neewerctl/models"
+	"github.com/Rokkit-exe/neewerctl/utils"
 	"go.bug.st/serial"
 )
 
-var stopMagic = []byte{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}
-
-func copyFile(src, dst string) error {
-	// Open source file
-	sourceFile, err := os.Open(src)
-	if err != nil {
-		return fmt.Errorf("failed to open source file: %v", err)
-	}
-	defer sourceFile.Close()
-
-	// Create destination file
-	destFile, err := os.Create(dst)
-	if err != nil {
-		return fmt.Errorf("failed to create destination file: %v", err)
-	}
-	defer destFile.Close()
-
-	// Copy contents
-	_, err = io.Copy(destFile, sourceFile)
-	if err != nil {
-		return fmt.Errorf("failed to copy contents: %v", err)
-	}
-
-	// Optionally copy file permissions
-	info, err := sourceFile.Stat()
-	if err == nil {
-		os.Chmod(dst, info.Mode())
-	}
-
-	return nil
-}
-
-func InstallService() error {
-	projectRoot, _ := os.Getwd() // or use BinaryRoot() if installed
-	src := filepath.Join(projectRoot, "service", "neewerd.service")
-	dst := "/etc/systemd/system/neewerd.service"
-
-	// Open source
-	in, err := os.Open(src)
-	if err != nil {
-		return err
-	}
-	defer in.Close()
-
-	// Create destination
-	out, err := os.Create(dst)
-	if err != nil {
-		return err
-	}
-	defer out.Close()
-
-	// Copy contents
-	if _, err := io.Copy(out, in); err != nil {
-		return err
-	}
-
-	// Optional: set permissions
-	if err := os.Chmod(dst, 0o644); err != nil {
-		return err
-	}
-
-	// Reload systemd to pick up the new service
-	if err := exec.Command("systemctl", "daemon-reload").Run(); err != nil {
-		return err
-	}
-
-	fmt.Println("Service installed successfully")
-	return nil
-}
+var (
+	stopMagic     = []byte{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}
+	getStateMagic = []byte{0xFF, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}
+	socketPath    = "/run/neewer.sock"
+	socketPerm    = os.FileMode(0o666)
+	socketType    = "unix"
+)
 
 func RunDeamon(port string) error {
-	os.Remove("/run/neewer.sock")
+	os.Remove(socketPath)
 
 	n, err := Open(port)
 	if err != nil {
@@ -92,42 +31,157 @@ func RunDeamon(port string) error {
 	}
 	defer n.Close()
 
-	ln, err := net.Listen("unix", "/run/neewer.sock")
+	var (
+		stateMu sync.RWMutex
+		state   = &models.State{
+			Port: port,
+		}
+		stateReady = make(chan struct{}) // Signal when first state is read
+	)
+
+	// Background goroutine to continuously read device state
+	go ReadState(n, &stateMu, state, stateReady)
+
+	// Wait for first state reading before accepting connections
+	fmt.Println("Waiting for initial state...")
+	<-stateReady
+	fmt.Println("Initial state received!")
+
+	ln, err := net.Listen(socketType, socketPath)
 	if err != nil {
-		return fmt.Errorf("failed to start UNIX socket listener: %v", err)
+		return fmt.Errorf("failed to start UNIX %s socket listener: %v", socketPath, err)
 	}
 	defer ln.Close()
-	os.Chmod("/run/neewer.sock", 0o666)
+	err = os.Chmod(socketPath, socketPerm)
+	if err != nil {
+		return fmt.Errorf("failed to set socket permissions: %v", err)
+	}
 
-	fmt.Println("Neewer daemon running...") // optional logging
+	fmt.Println("Neewer daemon running")
 
-	// Blocking accept loop
 	for {
+		fmt.Println("Waiting for connection...")
 		c, err := ln.Accept()
 		if err != nil {
-			// Only break on fatal errors
 			fmt.Println("Listener error:", err)
 			break
 		}
 
-		go func(c net.Conn) {
-			defer c.Close()
-			buf := make([]byte, 8)
-			if _, err := c.Read(buf); err != nil {
-				return
-			}
-
-			if bytes.Equal(buf, stopMagic) {
-				os.Remove("/run/neewer.sock")
-				ln.Close()
-				return
-			}
-
-			n.Send(buf)
-		}(c)
+		fmt.Println("Connection accepted!")
+		go handleClient(c, n, &stateMu, state)
 	}
 
 	return nil
+}
+
+func ReadState(n *Neewer, stateMu *sync.RWMutex, state *models.State, stateReady chan struct{}) {
+	buf := make([]byte, 8)
+	fmt.Println("State reader started")
+	firstRead := true
+
+	for {
+		if _, err := n.port.Read(buf); err != nil {
+			fmt.Printf("Serial read error: %v\n", err)
+			continue
+		}
+
+		// Validate frame
+		if buf[0] != 0x3A || buf[1] != 0x02 || buf[2] != 0x03 {
+			continue
+		}
+
+		// Update state
+		stateMu.Lock()
+		state.Power = buf[3] == 1
+		state.Brightness = int(buf[4])
+		state.Temperature = utils.TempByteToKelvin(buf[5])
+		fmt.Printf("State updated: Power=%v, Brightness=%d, Temp=%dK\n",
+			state.Power, state.Brightness, state.Temperature)
+		stateMu.Unlock()
+
+		if firstRead {
+			close(stateReady)
+			firstRead = false
+		}
+	}
+}
+
+func handleClient(c net.Conn, n *Neewer, stateMu *sync.RWMutex, state *models.State) {
+	defer c.Close()
+
+	buf := make([]byte, 8)
+
+	// Stop command
+	if bytes.Equal(buf, stopMagic) {
+		fmt.Println("Stop command received")
+		c.Write([]byte{0x01})
+		os.Remove("/run/neewer.sock")
+		return
+	}
+
+	// Get state command
+	if buf[0] == 0xFF && buf[1] == 0x00 {
+		fmt.Println("Get state command received")
+		stateMu.RLock()
+		response := []byte{
+			byte(utils.BoolToInt(state.Power)),
+			byte(state.Brightness),
+			utils.KelvinToTemp(state.Temperature),
+		}
+		stateMu.RUnlock()
+
+		fmt.Printf("Sending state: device=%s, power=%v, brightness=%d, temp=%d\n",
+			state.Port, state.Power, state.Brightness, state.Temperature)
+
+		written, err := c.Write(response)
+		if err != nil {
+			fmt.Printf("Error writing response: %v\n", err)
+		} else {
+			fmt.Printf("Wrote %d bytes\n", written)
+		}
+
+		// Give client time to read before closing
+		time.Sleep(50 * time.Millisecond)
+		return
+	}
+
+	// Set command - send to device and acknowledge
+	fmt.Printf("Set command received: %x\n", buf)
+	n.Send(buf)
+	c.Write([]byte{0x01})
+}
+
+func Connect() (net.Conn, error) {
+	c, err := net.Dial("unix", "/run/neewer.sock")
+	if err != nil {
+		return nil, fmt.Errorf("neewerd is not running\nTry starting it with:\n	sudo systemctl start neewerd.service\n	or\n sudo neewerctl deamon start")
+	}
+	return c, nil
+}
+
+func GetState(port string) (*models.State, error) {
+	c, err := Connect()
+	if err != nil {
+		return nil, err
+	}
+	defer c.Close()
+
+	if _, err := c.Write(getStateMagic); err != nil {
+		return nil, fmt.Errorf("write error: %w", err)
+	}
+
+	buf := make([]byte, 3)
+	n, err := c.Read(buf)
+	if err != nil {
+		return nil, fmt.Errorf("read error (got %d bytes): %w", n, err)
+	}
+
+	return &models.State{
+		Port:        port,
+		Power:       buf[0] == 1,
+		Brightness:  int(buf[1]),
+		Temperature: utils.TempByteToKelvin(buf[2]),
+	}, nil
 }
 
 func StartDeamon() error {
@@ -145,16 +199,6 @@ func StopDeamon() error {
 	}
 	return nil
 }
-
-// func StopDeamon() error {
-// 	c, err := net.Dial("unix", "/run/neewer.sock")
-// 	if err != nil {
-// 		return fmt.Errorf("neewerd is not running")
-// 	}
-// 	defer c.Close()
-// 	_, err = c.Write([]byte{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF})
-// 	return err
-// }
 
 type Neewer struct {
 	port serial.Port
@@ -184,85 +228,41 @@ func (n *Neewer) Close() {
 	n.port.Close()
 }
 
-func TempByteToKelvin(b byte) int {
-	return 2900 + int(b-1)*4100/40
-}
-
 func PowerOff(port string) error {
 	return Send(port, MakeFrame(false, 0, 2900))
 }
 
-func kelvinToTemp(k int) byte {
-	if k < 2900 {
-		k = 2900
-	}
-	if k > 7000 {
-		k = 7000
-	}
-	return byte(((k - 2900) * 40 / 4100) + 1)
-}
-
 func MakeFrame(on bool, brightness int, kelvin int) []byte {
-	if brightness < 0 {
-		brightness = 0
-	}
-	if brightness > 100 {
-		brightness = 100
-	}
+	b := utils.ClampInt(brightness, 0, 100)
 
-	temp := kelvinToTemp(kelvin)
+	t := utils.KelvinToTemp(kelvin)
 	pwr := byte(0)
 	if on {
 		pwr = 1
 	}
 
-	frame := []byte{0x3A, 0x02, 0x03, pwr, byte(brightness), temp, 0x00}
+	frame := []byte{0x3A, 0x02, 0x03, pwr, byte(b), t, 0x00}
 
 	sum := 0
-	for i := 0; i < 6; i++ { // 3A 02 03 PWR BRIGHT TEMP ONLY
-		sum += int(frame[i])
+	for _, v := range frame[:6] {
+		sum += int(v)
 	}
 	frame = append(frame, byte(sum&0xFF))
 	return frame
 }
 
 func Send(_ string, frame []byte) error {
-	c, err := net.Dial("unix", "/run/neewer.sock")
+	c, err := Connect()
 	if err != nil {
-		return fmt.Errorf("neewerd is not running")
+		return err
 	}
 	defer c.Close()
-	_, err = c.Write(frame)
-	return err
-}
 
-// func Send(port string, frame []byte) error {
-// 	mode := &serial.Mode{BaudRate: 115200}
-// 	p, err := serial.Open(port, mode)
-// 	if err != nil {
-// 		return fmt.Errorf("Make sure the device is connected and the port is correct.\nError opening port %s: %v", port, err)
-// 	}
-// 	defer p.Close()
-// 	_, err = p.Write(frame)
-// 	if err != nil {
-// 		return fmt.Errorf("Error writing to port %s: %v", port, err)
-// 	}
-// 	return nil
-// }
-
-func GetProfileValues(profile string) (int, int, error) {
-	switch profile {
-	case "cold":
-		return 7000, 100, nil
-	case "sunlight":
-		return 5600, 28, nil
-	case "afternoon":
-		return 5000, 16, nil
-	case "sunset":
-		return 4500, 16, nil
-	case "candle":
-		return 3400, 28, nil
-	default:
-		return 0, 0, fmt.Errorf("invalid profile: %s", profile)
+	if _, err = c.Write(frame); err != nil {
+		return err
 	}
+
+	ack := make([]byte, 1)
+	_, err = c.Read(ack)
+	return err
 }

@@ -85,3 +85,15 @@ These profiles are the original presets from the `Neewer` app:
 - `afternoon`: Brightness `16%`, Temperature `5000K`
 - `sunset`: Brightness `16%`, Temperature `4500K`
 - `candle`: Brightness `28%`, Temperature `3400K`
+
+## Protocol Details
+
+Frame format (8 bytes, repeating every ~60-80ms):
+[0] 0x3A       - Header
+[1] 0x02       - Message type (status broadcast)
+[2] 0x03       - Subcommand
+[3] PWR        - Power (0x00=off, 0x01=on)
+[4] BRIGHTNESS - 0x00-0x64 (0-100 decimal)
+[5] TEMPERATURE- 0x00-0x29 (maps to 2900K-7000K via your formula)
+[6] 0x00       - Reserved/unused
+[7] CHECKSUM   - Sum of bytes [0-5] & 0xFF

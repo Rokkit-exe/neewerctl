@@ -43,3 +43,43 @@ func WriteConfig(path string, config *models.Config) error {
 	fmt.Println("Config saved")
 	return nil
 }
+
+func BoolToInt(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
+}
+
+func ClampInt(value, min, max int) int {
+	if value < min {
+		return min
+	}
+	if value > max {
+		return max
+	}
+	return value
+}
+
+func KelvinToTemp(k int) byte {
+	if k < 2900 {
+		k = 2900
+	}
+	if k > 7000 {
+		k = 7000
+	}
+	return byte(((k - 2900) * 40 / 4100) + 1)
+}
+
+func TempByteToKelvin(b byte) int {
+	return 2900 + int(b-1)*4100/40
+}
+
+func GetProfileValues(profileName string, profiles []models.Profile) (int, int, error) {
+	for _, profile := range profiles {
+		if profile.Name == profileName {
+			return profile.Temperature, profile.Brightness, nil
+		}
+	}
+	return 0, 0, fmt.Errorf("profile '%s' not found", profileName)
+}

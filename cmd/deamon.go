@@ -23,20 +23,10 @@ var deamonCmd = &cobra.Command{
 	- neewerctl deamon stop
 `,
 	Args:      cobra.MatchAll(cobra.ExactArgs(1), cobra.OnlyValidArgs),
-	ValidArgs: []string{"start", "stop", "run", "install"},
+	ValidArgs: []string{"start", "stop", "run"},
 	Run: func(cmd *cobra.Command, args []string) {
 		status := args[0]
 		devicePort, _ := cmd.Flags().GetString("device")
-
-		if status == "install" {
-			err := ctl.InstallService()
-			if err != nil {
-				fmt.Println("Error installing deamon:", err)
-				return
-			}
-			fmt.Println("Deamon installed...")
-			return
-		}
 
 		if status == "run" {
 			err := ctl.RunDeamon(devicePort)

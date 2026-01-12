@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/Rokkit-exe/neewerctl/ctl"
 	"github.com/Rokkit-exe/neewerctl/models"
@@ -60,13 +61,20 @@ var setCmd = &cobra.Command{
 			}
 		}
 
-		nextTemp := targetDevice.State.Temperature
-		nextBright := targetDevice.State.Brightness
+		state, err := ctl.GetState(targetDevice.State.Port)
+		if err != nil {
+			fmt.Println("Error getting device state:", err)
+			return
+		}
+		time.Sleep(500 * time.Millisecond)
+
+		nextTemp := state.Temperature
+		nextBright := state.Brightness
 
 		if profile != "" {
-			t, b, err := ctl.GetProfileValues(profile)
+			t, b, err := utils.GetProfileValues(profile, Config.Profiles)
 			if err != nil {
-				fmt.Println("Error:", err)
+				fmt.Println("Error getting profile values:", err)
 				return
 			}
 			err = ctl.Send(targetDevice.State.Port, ctl.MakeFrame(true, b, t))
@@ -76,41 +84,31 @@ var setCmd = &cobra.Command{
 			}
 
 			fmt.Println("Profile set to", profile)
-			targetDevice.State.Temperature = t
-			targetDevice.State.Brightness = b
-			utils.WriteConfig("/home/frank/coding/neewerctl/config.yaml", Config)
+
 			return
 		}
 
 		if temperature >= 0 {
-			t := temperature
-			if t < targetDevice.MinTemperature {
-				t = targetDevice.MinTemperature
-			}
-			if t > targetDevice.MaxTemperature {
-				t = targetDevice.MaxTemperature
-			}
-			nextTemp = t
+			nextTemp = utils.ClampInt(temperature, targetDevice.MinTemperature, targetDevice.MaxTemperature)
 		}
 
 		if brightness >= 0 {
-			b := brightness
-			if b > targetDevice.MaxBrightness {
-				b = targetDevice.MaxBrightness
-			}
-			nextBright = b
+			nextBright = utils.ClampInt(brightness, targetDevice.MinBrightness, targetDevice.MaxBrightness)
 		}
 
-		err := ctl.Send(targetDevice.State.Port, ctl.MakeFrame(true, nextBright, nextTemp))
+		err = ctl.Send(targetDevice.State.Port, ctl.MakeFrame(true, nextBright, nextTemp))
 		if err != nil {
 			fmt.Println("Error setting values:", err)
 			return
 		}
 
-		targetDevice.State.Temperature = nextTemp
-		targetDevice.State.Brightness = nextBright
-		utils.WriteConfig("/home/frank/coding/neewerctl/config.yaml", Config)
-		fmt.Println("Set brightness to", nextBright, "and temperature to", nextTemp)
+		time.Sleep(500 * time.Millisecond)
+		state, err = ctl.GetState(targetDevice.State.Port)
+		if err != nil {
+			fmt.Println("Error getting device state:", err)
+			return
+		}
+		fmt.Println(state.ToString())
 	},
 }
 

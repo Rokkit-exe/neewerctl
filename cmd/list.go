@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 
+	"github.com/Rokkit-exe/neewerctl/ctl"
 	"github.com/spf13/cobra"
 	"go.bug.st/serial"
 )
@@ -47,7 +48,11 @@ var listCmd = &cobra.Command{
 
 		fmt.Println("Found Neewer devices:")
 		for _, port := range ports {
-			fmt.Println(" -", port)
+			state, err := ctl.GetState(port)
+			if err != nil {
+				continue
+			}
+			fmt.Println(" - Neewer PL81 Pro " + state.ToString())
 		}
 	},
 }

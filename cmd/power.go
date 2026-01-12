@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/Rokkit-exe/neewerctl/ctl"
 	"github.com/Rokkit-exe/neewerctl/models"
@@ -35,7 +36,6 @@ var powerCmd = &cobra.Command{
 		state := args[0]
 		devicePort, _ := cmd.Flags().GetString("device")
 
-		fmt.Println("Device port:", devicePort)
 		var targetDevice models.Device
 
 		// Validate the argument
@@ -55,26 +55,36 @@ var powerCmd = &cobra.Command{
 				break
 			}
 		}
+		deviceState, err := ctl.GetState(targetDevice.State.Port)
+		if err != nil {
+			fmt.Println("Error getting device state:", err)
+			return
+		}
+		time.Sleep(500 * time.Millisecond)
 
 		if state == "on" {
-			err := ctl.Send(targetDevice.State.Port, ctl.MakeFrame(true, targetDevice.State.Brightness, targetDevice.State.Temperature))
+			err = ctl.Send(targetDevice.State.Port, ctl.MakeFrame(true, deviceState.Brightness, deviceState.Temperature))
 			if err != nil {
 				fmt.Println("Error setting saved values:", err)
 				return
 			}
-			fmt.Println("Temperature", targetDevice.State.Temperature, "K,", "Brightness", targetDevice.State.Brightness, "%")
-			fmt.Println("Powered on")
-			return
 		}
 
 		if state == "off" {
-			err := ctl.PowerOff(targetDevice.State.Port)
+			err := ctl.Send(targetDevice.State.Port, ctl.MakeFrame(false, deviceState.Brightness, deviceState.Temperature))
 			if err != nil {
 				fmt.Println("Error powering off:", err)
 				return
 			}
-			fmt.Println("Powered off")
 		}
+
+		time.Sleep(500 * time.Millisecond)
+		deviceState, err = ctl.GetState(targetDevice.State.Port)
+		if err != nil {
+			fmt.Println("Error getting device state:", err)
+			return
+		}
+		fmt.Println(deviceState.ToString())
 	},
 }
 
