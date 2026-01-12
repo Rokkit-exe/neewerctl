@@ -35,12 +35,6 @@ echo "Building neewerctl binary..."
 go build -o ./bin/neewerctl main.go
 cp ./bin/neewerctl /usr/local/bin/neewerctl
 
-# Setting up service file
-echo "Setting up neewerd.service file..."
-cp ./service/neewerd.service /etc/systemd/system/neewerd.service
-systemctl daemon-reload
-echo "Enabling neewerd.service to start on boot..."
-systemctl enable neewerd.service
 
 # Setting up config file
 echo "Setting up configuration file to $HOME/.config/neewerctl/config.yaml..."
@@ -53,8 +47,6 @@ echo "neewerctl binary location:"
 echo "  - /usr/local/bin/neewerctl"
 echo "Config location:"
 echo "  - $HOME/.config/neewerctl/config.yaml"
-echo "To start the daemon:"
-echo "  - sudo neewerctl daemon start"
 echo
 echo "Initialization complete."
 

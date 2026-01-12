@@ -9,5 +9,4 @@ type Device struct {
 	MaxBrightness  int    `yaml:"max_brightness"`
 	MinTemperature int    `yaml:"min_temperature"`
 	MaxTemperature int    `yaml:"max_temperature"`
-	State          State  `yaml:"state"`
 }

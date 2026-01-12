@@ -2,9 +2,9 @@ package cmd
 
 import (
 	"fmt"
-	"time"
+	"os"
 
-	"github.com/Rokkit-exe/neewerctl/ctl"
+	"github.com/Rokkit-exe/neewerctl/controller"
 	"github.com/Rokkit-exe/neewerctl/models"
 	"github.com/spf13/cobra"
 )
@@ -36,8 +36,25 @@ var powerCmd = &cobra.Command{
 		state := args[0]
 		devicePort, _ := cmd.Flags().GetString("device")
 
-		var targetDevice models.Device
+		deviceState, err := models.LoadState()
+		if err != nil {
+			if os.IsNotExist(err) {
+				deviceState = &models.State{
+					Port:        devicePort,
+					Power:       true,
+					Brightness:  100,
+					Temperature: 5600,
+				}
+			} else {
+				fmt.Println("Error loading state:", err)
+				return
+			}
+		}
 
+		ctl, _ := controller.NewCtl(deviceState)
+		defer ctl.Close()
+
+		deviceState = ctl.GetState()
 		// Validate the argument
 		if state != "on" && state != "off" {
 			fmt.Println("Error: argument must be 'on' or 'off'")
@@ -45,25 +62,8 @@ var powerCmd = &cobra.Command{
 			return
 		}
 
-		for _, dev := range Config.Devices {
-			if dev.State.Port == "" {
-				fmt.Println("Error: Device port not specified. Use --device flag or set in config file.")
-				return
-			}
-			if dev.State.Port == devicePort {
-				targetDevice = dev
-				break
-			}
-		}
-		deviceState, err := ctl.GetState(targetDevice.State.Port)
-		if err != nil {
-			fmt.Println("Error getting device state:", err)
-			return
-		}
-		time.Sleep(500 * time.Millisecond)
-
 		if state == "on" {
-			err = ctl.Send(targetDevice.State.Port, ctl.MakeFrame(true, deviceState.Brightness, deviceState.Temperature))
+			err := ctl.Send(true, deviceState.Brightness, deviceState.Temperature)
 			if err != nil {
 				fmt.Println("Error setting saved values:", err)
 				return
@@ -71,20 +71,14 @@ var powerCmd = &cobra.Command{
 		}
 
 		if state == "off" {
-			err := ctl.Send(targetDevice.State.Port, ctl.MakeFrame(false, deviceState.Brightness, deviceState.Temperature))
+			err := ctl.Send(false, deviceState.Brightness, deviceState.Temperature)
 			if err != nil {
 				fmt.Println("Error powering off:", err)
 				return
 			}
 		}
 
-		time.Sleep(500 * time.Millisecond)
-		deviceState, err = ctl.GetState(targetDevice.State.Port)
-		if err != nil {
-			fmt.Println("Error getting device state:", err)
-			return
-		}
-		fmt.Println(deviceState.ToString())
+		fmt.Println(ctl.GetState().ToString())
 	},
 }
 

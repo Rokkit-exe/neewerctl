@@ -35,8 +35,6 @@ sudo ./init.sh
 # must be run as root
 # default port: /dev/ttyUSB0
 
-sudo neewerctl deamon start
-sudo neewerctl deamon stop
 # Adjust brightness (0-100) and temperature (2700-7000K)
 sudo neewerctl set --device "/dev/ttyUSB0" --brightness [0-100] --temperature [2700-7000]
 
@@ -88,12 +86,15 @@ These profiles are the original presets from the `Neewer` app:
 
 ## Protocol Details
 
-Frame format (8 bytes, repeating every ~60-80ms):
-[0] 0x3A       - Header
-[1] 0x02       - Message type (status broadcast)
-[2] 0x03       - Subcommand
-[3] PWR        - Power (0x00=off, 0x01=on)
-[4] BRIGHTNESS - 0x00-0x64 (0-100 decimal)
-[5] TEMPERATURE- 0x00-0x29 (maps to 2900K-7000K via your formula)
-[6] 0x00       - Reserved/unused
-[7] CHECKSUM   - Sum of bytes [0-5] & 0xFF
+| Byte | Value/Range | Description |
+|------|-------------|-------------|
+| 0 | `0x3A` | Header |
+| 1 | `0x02` | Message type (status broadcast) |
+| 2 | `0x03` | Subcommand |
+| 3 | `0x00`-`0x01` | Power (`0x00`=off, `0x01`=on) |
+| 4 | `0x00`-`0x64` | Brightness (0-100 decimal) |
+| 5 | `0x00`-`0x29` | Temperature (maps to 2900K-7000K) |
+| 6 | `0x00` | Reserved/unused |
+| 7 | Calculated | Checksum (sum of bytes 0-5 & `0xFF`) |
+
+**Frame timing:** Repeats every ~60-80ms

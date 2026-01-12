@@ -22,8 +22,6 @@ func LoadConfig(path string) (*models.Config, error) {
 		return nil, err
 	}
 
-	// Use the config values as needed
-	fmt.Println("Config loaded")
 	return &config, nil
 }
 
@@ -40,7 +38,6 @@ func WriteConfig(path string, config *models.Config) error {
 		return err
 	}
 
-	fmt.Println("Config saved")
 	return nil
 }
 

@@ -2,9 +2,9 @@ package cmd
 
 import (
 	"fmt"
-	"time"
+	"os"
 
-	"github.com/Rokkit-exe/neewerctl/ctl"
+	"github.com/Rokkit-exe/neewerctl/controller"
 	"github.com/Rokkit-exe/neewerctl/models"
 	"github.com/Rokkit-exe/neewerctl/utils"
 	"github.com/spf13/cobra"
@@ -48,28 +48,33 @@ var setCmd = &cobra.Command{
 		profile, _ := cmd.Flags().GetString("profile")
 		devicePort, _ := cmd.Flags().GetString("device")
 
-		var targetDevice models.Device
-
-		for _, dev := range Config.Devices {
-			if dev.State.Port == "" {
-				fmt.Println("Error: Device port not specified. Use --device flag or set in config file.")
-				return
-			}
-			if dev.State.Port == devicePort {
-				targetDevice = dev
-				break
+		deviceState, err := models.LoadState()
+		if os.IsNotExist(err) {
+			deviceState = &models.State{
+				Port:        devicePort,
+				Power:       true,
+				Brightness:  100,
+				Temperature: 5600,
 			}
 		}
-
-		state, err := ctl.GetState(targetDevice.State.Port)
 		if err != nil {
-			fmt.Println("Error getting device state:", err)
+			fmt.Println("Error loading state:", err)
 			return
 		}
-		time.Sleep(500 * time.Millisecond)
+		ctl, _ := controller.NewCtl(deviceState)
+		defer ctl.Close()
 
+		state := ctl.GetState()
 		nextTemp := state.Temperature
 		nextBright := state.Brightness
+
+		if temperature >= 0 {
+			nextTemp = utils.ClampInt(temperature, 2900, 7000)
+		}
+
+		if brightness >= 0 {
+			nextBright = utils.ClampInt(brightness, 0, 100)
+		}
 
 		if profile != "" {
 			t, b, err := utils.GetProfileValues(profile, Config.Profiles)
@@ -77,38 +82,18 @@ var setCmd = &cobra.Command{
 				fmt.Println("Error getting profile values:", err)
 				return
 			}
-			err = ctl.Send(targetDevice.State.Port, ctl.MakeFrame(true, b, t))
-			if err != nil {
-				fmt.Println("Error setting profile:", err)
-				return
-			}
-
-			fmt.Println("Profile set to", profile)
-
-			return
+			nextTemp = t
+			nextBright = b
+			fmt.Println("Profile: ", profile)
 		}
 
-		if temperature >= 0 {
-			nextTemp = utils.ClampInt(temperature, targetDevice.MinTemperature, targetDevice.MaxTemperature)
-		}
-
-		if brightness >= 0 {
-			nextBright = utils.ClampInt(brightness, targetDevice.MinBrightness, targetDevice.MaxBrightness)
-		}
-
-		err = ctl.Send(targetDevice.State.Port, ctl.MakeFrame(true, nextBright, nextTemp))
+		err = ctl.Send(true, nextBright, nextTemp)
 		if err != nil {
 			fmt.Println("Error setting values:", err)
 			return
 		}
 
-		time.Sleep(500 * time.Millisecond)
-		state, err = ctl.GetState(targetDevice.State.Port)
-		if err != nil {
-			fmt.Println("Error getting device state:", err)
-			return
-		}
-		fmt.Println(state.ToString())
+		fmt.Println(ctl.GetState().ToString())
 	},
 }
 
