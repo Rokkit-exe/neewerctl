@@ -1,4 +1,4 @@
-package models
+package ctl
 
 import (
 	"encoding/json"
@@ -12,6 +12,15 @@ type State struct {
 	Power       bool   `json:"power"`
 	Brightness  int    `json:"brightness"`
 	Temperature int    `json:"temperature"`
+}
+
+func defaultState() *State {
+	return &State{
+		Port:        "/dev/ttyUSB0",
+		Power:       false,
+		Brightness:  100,
+		Temperature: 7000,
+	}
 }
 
 func statePath() string {
@@ -33,10 +42,9 @@ func (s *State) SaveState() error {
 
 func LoadState() (*State, error) {
 	b, err := os.ReadFile(statePath())
-	// catch if the file does not exist
 	if os.IsNotExist(err) {
-		fmt.Println("State file does not exist, returning nil state")
-		return nil, err
+		fmt.Println("State file does not exist, using default State.")
+		return defaultState(), nil
 	}
 	if err != nil {
 		return nil, err

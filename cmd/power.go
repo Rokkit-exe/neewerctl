@@ -2,10 +2,8 @@ package cmd
 
 import (
 	"fmt"
-	"os"
 
-	"github.com/Rokkit-exe/neewerctl/controller"
-	"github.com/Rokkit-exe/neewerctl/models"
+	"github.com/Rokkit-exe/neewerctl/ctl"
 	"github.com/spf13/cobra"
 )
 
@@ -36,25 +34,23 @@ var powerCmd = &cobra.Command{
 		state := args[0]
 		devicePort, _ := cmd.Flags().GetString("device")
 
-		deviceState, err := models.LoadState()
+		deviceState, err := ctl.LoadState()
 		if err != nil {
-			if os.IsNotExist(err) {
-				deviceState = &models.State{
-					Port:        devicePort,
-					Power:       true,
-					Brightness:  100,
-					Temperature: 5600,
-				}
-			} else {
-				fmt.Println("Error loading state:", err)
-				return
-			}
+			fmt.Println("Error loading state:", err)
+			return
 		}
 
-		ctl, _ := controller.NewCtl(deviceState)
-		defer ctl.Close()
+		controller, err := ctl.NewCtl(deviceState)
+		if err != nil {
+			fmt.Println("Error initializing controller:", err)
+			return
+		}
+		defer controller.Close()
 
-		deviceState = ctl.GetState()
+		deviceState = controller.GetState()
+		if devicePort != "" {
+			deviceState.Port = devicePort
+		}
 		// Validate the argument
 		if state != "on" && state != "off" {
 			fmt.Println("Error: argument must be 'on' or 'off'")
@@ -63,7 +59,7 @@ var powerCmd = &cobra.Command{
 		}
 
 		if state == "on" {
-			err := ctl.Send(true, deviceState.Brightness, deviceState.Temperature)
+			err := controller.Send(true, deviceState.Brightness, deviceState.Temperature)
 			if err != nil {
 				fmt.Println("Error setting saved values:", err)
 				return
@@ -71,14 +67,14 @@ var powerCmd = &cobra.Command{
 		}
 
 		if state == "off" {
-			err := ctl.Send(false, deviceState.Brightness, deviceState.Temperature)
+			err := controller.Send(false, deviceState.Brightness, deviceState.Temperature)
 			if err != nil {
 				fmt.Println("Error powering off:", err)
 				return
 			}
 		}
 
-		fmt.Println(ctl.GetState().ToString())
+		fmt.Println(controller.GetState().ToString())
 	},
 }
 

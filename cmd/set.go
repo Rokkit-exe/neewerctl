@@ -4,8 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/Rokkit-exe/neewerctl/controller"
-	"github.com/Rokkit-exe/neewerctl/models"
+	"github.com/Rokkit-exe/neewerctl/ctl"
 	"github.com/Rokkit-exe/neewerctl/utils"
 	"github.com/spf13/cobra"
 )
@@ -48,23 +47,23 @@ var setCmd = &cobra.Command{
 		profile, _ := cmd.Flags().GetString("profile")
 		devicePort, _ := cmd.Flags().GetString("device")
 
-		deviceState, err := models.LoadState()
-		if os.IsNotExist(err) {
-			deviceState = &models.State{
-				Port:        devicePort,
-				Power:       true,
-				Brightness:  100,
-				Temperature: 5600,
-			}
-		}
+		deviceState, err := ctl.LoadState()
 		if err != nil {
 			fmt.Println("Error loading state:", err)
 			return
 		}
-		ctl, _ := controller.NewCtl(deviceState)
-		defer ctl.Close()
+		controller, err := ctl.NewCtl(deviceState)
+		if err != nil {
+			fmt.Println("Error initializing controller:", err)
+			os.Exit(1)
+		}
+		defer controller.Close()
 
-		state := ctl.GetState()
+		state := controller.GetState()
+		// Override port if specified
+		if devicePort != "" {
+			state.Port = devicePort
+		}
 		nextTemp := state.Temperature
 		nextBright := state.Brightness
 
@@ -87,13 +86,13 @@ var setCmd = &cobra.Command{
 			fmt.Println("Profile: ", profile)
 		}
 
-		err = ctl.Send(true, nextBright, nextTemp)
+		err = controller.Send(true, nextBright, nextTemp)
 		if err != nil {
 			fmt.Println("Error setting values:", err)
 			return
 		}
 
-		fmt.Println(ctl.GetState().ToString())
+		fmt.Println(controller.GetState().ToString())
 	},
 }
 

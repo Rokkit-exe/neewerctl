@@ -4,13 +4,12 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/Rokkit-exe/neewerctl/models"
 	"github.com/Rokkit-exe/neewerctl/utils"
 )
 
 type Ctl struct {
 	dev   *Device
-	state *models.State
+	state *State
 }
 
 func (c *Ctl) setState(on bool, brightness int, kelvin int) {
@@ -19,11 +18,11 @@ func (c *Ctl) setState(on bool, brightness int, kelvin int) {
 	c.state.Temperature = kelvin
 }
 
-func (c *Ctl) GetState() *models.State {
+func (c *Ctl) GetState() *State {
 	return c.state
 }
 
-func NewCtl(state *models.State) (*Ctl, error) {
+func NewCtl(state *State) (*Ctl, error) {
 	device, err := Open(state.Port)
 	if err != nil {
 		return nil, err

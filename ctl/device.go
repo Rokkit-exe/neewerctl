@@ -1,4 +1,4 @@
-package controller
+package ctl
 
 import (
 	"time"
@@ -14,11 +14,11 @@ func Open(dev string) (*Device, error) {
 	p, err := serial.Open(dev, &serial.Mode{
 		BaudRate: 115200,
 	})
-	p.SetReadTimeout(500 * time.Millisecond)
 	if err != nil {
 		return nil, err
 	}
 
+	p.SetReadTimeout(500 * time.Millisecond)
 	p.ResetInputBuffer()
 	p.ResetOutputBuffer()
 	p.Write([]byte{0, 0, 0, 0})
